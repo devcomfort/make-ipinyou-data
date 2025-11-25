@@ -1,19 +1,17 @@
 make-ipinyou-data
 =================
 
-This project is to formalise the iPinYou RTB data into a standard format for further researches.
+This repository converts the iPinYou RTB dataset into a clean, research-ready format.
 
-### Step 0
-The raw data of iPinYou (`ipinyou.contest.dataset.zip`) can be downloaded from [UCL website](http://bunwell.cs.ucl.ac.uk/ipinyou.contest.dataset.zip).
+### Step 0: Download the source data
+Download `ipinyou.contest.dataset.zip` from [Kaggle](https://www.kaggle.com/datasets/lastsummer/ipinyou) and unzip it. You should now have a folder named `ipinyou.contest.dataset`.
 
-Unzip it and get the folder `ipinyou.contest.dataset`.
-
-### Step 1
-Update the soft link for the folder `ipinyou.contest.dataset` in `original-data`. 
+### Step 1: Point `original-data` to the dataset
+Create or refresh the symlink inside `original-data` so it references your local copy:
 ```
 weinan@ZHANG:~/Project/make-ipinyou-data/original-data$ ln -sfn ~/Data/ipinyou.contest.dataset ipinyou.contest.dataset
 ```
-Under `make-ipinyou-data/original-data/ipinyou.contest.dataset` there should be the original dataset files like this:
+After linking, `make-ipinyou-data/original-data/ipinyou.contest.dataset` should contain the raw files:
 ```
 weinan@ZHANG:~/Project/make-ipinyou-data/original-data/ipinyou.contest.dataset$ ls
 algo.submission.demo.tar.bz2  README         testing2nd   training3rd
@@ -21,28 +19,25 @@ city.cn.txt                   region.cn.txt  testing3rd   user.profile.tags.cn.t
 city.en.txt                   region.en.txt  training1st  user.profile.tags.en.txt
 files.md5                     testing1st     training2nd
 ```
-You do not need to further unzip the packages in the subfolders.
+Do not unzip the archives in the campaign subfolders; the build scripts handle them.
 
-### Step 2
-Under `make-ipinyou-data` folder, just run `make all`.
-
-After the program finished, the total size of the folder will be 14G. The files under `make-ipinyou-data` should be like this:
+### Step 2: Build the processed data
+From the repository root, run `make all`. Once the pipeline finishes (expect roughly 14 GB of output), the folder structure will look similar to:
 ```
 weinan@ZHANG:~/Project/make-ipinyou-data$ ls
 1458  2261  2997  3386  3476  LICENSE   mkyzxdata.sh   python     schema.txt
 2259  2821  3358  3427  all   Makefile  original-data  README.md
 ```
-Normally, we only do experiment for each campaign (e.g. `1458`). `all` is just the merge of all the campaigns. You can delete `all` if you think it is unuseful in your experiment.
+Each numbered directory corresponds to a campaign (for example `1458`). The `all` directory aggregates every campaign and can be removed if you do not need the combined dataset.
 
-### Use of the data
-We use campaign 1458 as example here.
+### Using the processed data
+Campaign `1458` is representative:
 ```
 weinan@ZHANG:~/Project/make-ipinyou-data/1458$ ls
 featindex.txt  test.log.txt  test.yzx.txt  train.log.txt  train.yzx.txt
 ```
-* `train.log.txt` and `test.log.txt` are the formalised string data for each row (record) in train and test. The first column is whether the user click the ad or not. The 14th column is the winning price for this auction.
-* `featindex.txt`maps the features to their indexes. For example, `8:115.45.195.*	29` means that the 8th column in `train.log.txt` with the string `115.45.195.*` maps to feature index `29`.
-* `train.yzx.txt` and `test.yzx.txt` are the mapped vector data for `train.log.txt` and `test.log.txt`. The format is y:click, z:wining_price, and x:features. Such data is in the standard form as introduced in [iPinYou Benchmarking](http://arxiv.org/abs/1407.7073).
+* `train.log.txt` and `test.log.txt` store the original string features per impression. Column 1 is the click label, column 14 is the clearing price.
+* `featindex.txt` maps categorical feature values to integer ids, e.g. `8:115.45.195.*	29` means column 8 with value `115.45.195.*` becomes feature id `29`.
+* `train.yzx.txt` and `test.yzx.txt` hold the vectorised format described in [iPinYou Benchmarking](http://arxiv.org/abs/1407.7073): `y` is the click label, `z` is the winning price, and `x` contains `feature_id:1` pairs.
 
-
-For any questions, please report the issues or contact [Weinan Zhang](http://www0.cs.ucl.ac.uk/staff/w.zhang/).
+Questions? Please open an issue or contact [Weinan Zhang](http://www0.cs.ucl.ac.uk/staff/w.zhang/).
