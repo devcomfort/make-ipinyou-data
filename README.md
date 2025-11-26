@@ -1,43 +1,145 @@
-make-ipinyou-data
-=================
+# make-ipinyou-data
 
-This repository converts the iPinYou RTB dataset into a clean, research-ready format.
+This repository converts the **iPinYou RTB dataset** into a clean, research-ready format.
 
-### Step 0: Download the source data
-Download `ipinyou.contest.dataset.zip` from [Kaggle](https://www.kaggle.com/datasets/lastsummer/ipinyou) and unzip it. You should now have a folder named `ipinyou.contest.dataset`.
+> **🚀 2025 Update:** A new high-performance **DuckDB pipeline** is now available alongside the legacy scripts. It offers broader data coverage, faster execution, and better resource management.
 
-### Step 1: Point `original-data` to the dataset
-Create or refresh the symlink inside `original-data` so it references your local copy:
-```
-weinan@ZHANG:~/Project/make-ipinyou-data/original-data$ ln -sfn ~/Data/ipinyou.contest.dataset ipinyou.contest.dataset
-```
-After linking, `make-ipinyou-data/original-data/ipinyou.contest.dataset` should contain the raw files:
-```
-weinan@ZHANG:~/Project/make-ipinyou-data/original-data/ipinyou.contest.dataset$ ls
-algo.submission.demo.tar.bz2  README         testing2nd   training3rd
-city.cn.txt                   region.cn.txt  testing3rd   user.profile.tags.cn.txt
-city.en.txt                   region.en.txt  training1st  user.profile.tags.en.txt
-files.md5                     testing1st     training2nd
-```
-Do not unzip the archives in the campaign subfolders; the build scripts handle them.
+## 🌟 2025 Pipeline Refresh (DuckDB)
 
-### Step 2: Build the processed data
-From the repository root, run `make all`. Once the pipeline finishes (expect roughly 14 GB of output), the folder structure will look similar to:
-```
-weinan@ZHANG:~/Project/make-ipinyou-data$ ls
-1458  2261  2997  3386  3476  LICENSE   mkyzxdata.sh   python     schema.txt
-2259  2821  3358  3427  all   Makefile  original-data  README.md
-```
-Each numbered directory corresponds to a campaign (for example `1458`). The `all` directory aggregates every campaign and can be removed if you do not need the combined dataset.
+The new pipeline (`duckdb_pipeline.py`) introduces significant improvements:
 
-### Using the processed data
-Campaign `1458` is representative:
-```
-weinan@ZHANG:~/Project/make-ipinyou-data/1458$ ls
-featindex.txt  test.log.txt  test.yzx.txt  train.log.txt  train.yzx.txt
-```
-* `train.log.txt` and `test.log.txt` store the original string features per impression. Column 1 is the click label, column 14 is the clearing price.
-* `featindex.txt` maps categorical feature values to integer ids, e.g. `8:115.45.195.*	29` means column 8 with value `115.45.195.*` becomes feature id `29`.
-* `train.yzx.txt` and `test.yzx.txt` hold the vectorised format described in [iPinYou Benchmarking](http://arxiv.org/abs/1407.7073): `y` is the click label, `z` is the winning price, and `x` contains `feature_id:1` pairs.
+-   **Broader Data Coverage:** Automatically crawls all `training*` and `testing*` rounds. It decompresses archives into a cache and exports unified TSV files with a `round` column, making historical campaigns (1st/2nd/3rd rounds) available by default.
+-   **Advanced UA Normalization:** Powered by `ua-parser[regex]`, it parses user-agent strings into normalized OS/Browser families, exposing a `ua_signature(useragent)` UDF for downstream tasks.
+-   **High Performance:** Configurable via `.env` (memory limits, threads, workers). Uses DuckDB's `strict_mode=FALSE` and `null_padding=TRUE` to handle schema variations across rounds effectively.
 
-Questions? Please open an issue or contact [Weinan Zhang](http://www0.cs.ucl.ac.uk/staff/w.zhang/).
+### Pipeline Comparison
+
+| Feature      | 🐢 Legacy (`make all`)                       | 🦆 DuckDB Pipeline (Recommended)                       |
+| :----------- | :------------------------------------------ | :---------------------------------------------------- |
+| **Coverage** | Per-campaign run (manual selection).        | **All rounds** (`training*`/`testing*`) auto-crawled. |
+| **Parsing**  | Keyword heuristics (basic lists).           | **`ua-parser`** (Normalized OS/Browser families).     |
+| **Output**   | Spread across numbered directories (~14GB). | Unified `train.tsv` / `test.tsv` + optional splits.   |
+| **Control**  | System defaults (no memory cap).            | Fine-grained tuning via **`.env`** (Memory, Threads). |
+| **Workflow** | `make all` -> Manual analysis.              | `python pipeline.py` -> Ready-to-use TSVs.            |
+
+The legacy helpers under `python/` (e.g., `mkdata.py`, `mktest.py`, `formalizeua.py`) have all been ported to **Python 3** so previous experiments remain reproducible without the Python 2 toolchain.
+
+---
+
+## 0. Prerequisites (Common)
+
+Before running either pipeline, you must download the source data.
+
+1.  Download `ipinyou.contest.dataset.zip` from [Kaggle](https://www.kaggle.com/datasets/lastsummer/ipinyou).
+2.  Unzip the file. You should see a folder named `ipinyou.contest.dataset` containing the raw files.
+    * *Note: Do not unzip the individual `.bz2` archives inside the subfolders.*
+
+```text
+ipinyou.contest.dataset/
+├── training1st/
+├── training2nd/
+├── training3rd/
+├── testing1st/
+├── city.en.txt
+└── ...
+````
+
+-----
+
+## Option A: Using the DuckDB Pipeline (Recommended)
+
+This method is faster and produces a unified dataset.
+
+### 1\. Configure Environment
+
+Create a `.env` file in the repository root. You can copy the structure below:
+
+```ini
+# .env Configuration Example
+
+# Path to the unzipped dataset (absolute path recommended)
+IPINYOU_DATASET_ROOT=/path/to/ipinyou.contest.dataset
+
+# Where to save the processed .tsv files
+IPINYOU_OUTPUT_DIR=./output_data
+
+# Performance Tuning
+IPINYOU_DUCKDB_MEMORY_LIMIT=16GB
+IPINYOU_DUCKDB_THREADS=4
+IPINYOU_DECOMPRESS_WORKERS=4
+
+# Logging
+IPINYOU_VERBOSE=true
+IPINYOU_PROGRESS=true
+
+# Legacy workflow (optional overrides)
+IPINYOU_LEGACY_ORIGINAL_FOLDER=/path/to/ipinyou.contest.dataset
+#IPINYOU_LEGACY_TRAIN_DIR=/path/to/custom/train
+#IPINYOU_LEGACY_TEST_DIR=/path/to/custom/test
+```
+
+### 2\. Run the Pipeline
+
+Execute the Python script:
+
+```bash
+python duckdb_pipeline.py
+```
+
+Check your `IPINYOU_OUTPUT_DIR` for the generated `train.tsv` and `test.tsv` files.
+
+-----
+
+## Option B: Using the Legacy Workflow
+
+Use this if you need to replicate original research relying on the specific folder structure of the old scripts.
+
+### 1\. Configure Paths
+
+Ensure `.env` defines `IPINYOU_LEGACY_ORIGINAL_FOLDER` (default: `original-data/ipinyou.contest.dataset`). If you prefer the historical symlink approach, you can still create `original-data/ipinyou.contest.dataset` as a symbolic link to your dataset root, but it is now optional.
+
+### 2\. Build Data
+
+Install [just](https://github.com/casey/just) and run from the repository root:
+
+```bash
+just --dotenv all
+```
+
+*Expect approximately 14GB of artifacts.* The output will be organized by campaign ID (e.g., `1458`, `2259`):
+
+```text
+make-ipinyou-data/
+├── 1458/
+├── 2259/
+├── all/
+├── original-data/
+└── ...
+```
+
+-----
+
+## Data Format Guide
+
+### Legacy Format Details (e.g., folder `1458`)
+
+If you use the legacy format, each campaign folder contains:
+
+  * **`train.log.txt` / `test.log.txt`**: Original string features.
+      * *Col 1*: Click label.
+      * *Col 14*: Clearing price.
+  * **`featindex.txt`**: Maps categorical values to integer IDs.
+      * Example: `8:115.45.195.* 29` (Column 8 value maps to ID 29).
+  * **`train.yzx.txt` / `test.yzx.txt`**: Vectorized format (LIBLINEAR/SVM style).
+      * Format: `y` (Label) `z` (Win Price) `x` (Features `index:1`).
+      * Reference: [iPinYou Benchmarking (ArXiv)](http://arxiv.org/abs/1407.7073).
+
+### DuckDB Format Details
+
+The DuckDB pipeline outputs standard **TSV (Tab-Separated Values)** files with headers, including a `round` column to distinguish between data waves (1st, 2nd, 3rd).
+
+-----
+
+## Contact
+
+For questions or issues, please open a GitHub issue or contact [Weinan Zhang](http://www0.cs.ucl.ac.uk/staff/w.zhang/).
