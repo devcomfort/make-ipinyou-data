@@ -8,6 +8,8 @@ authors = [
 dependencies = [
     "python-dotenv>=1.2.1",
     "kagglehub>=0.3.13",
+    "duckdb>=1.4.2",
+    "loguru>=0.7.3",
     "tqdm>=4.67.1",
 ]
 readme = "README.md"

@@ -14,9 +14,13 @@ certifi==2025.11.12
     # via requests
 charset-normalizer==3.4.4
     # via requests
+duckdb==1.4.2
+    # via make-ipinyou-data
 idna==3.11
     # via requests
 kagglehub==0.3.13
+    # via make-ipinyou-data
+loguru==0.7.3
     # via make-ipinyou-data
 packaging==25.0
     # via kagglehub
