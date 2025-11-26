@@ -70,4 +70,3 @@ def unzip_bz2(
         logger.info("%d files were skipped by the filter", len(rejected))
 
     return completed
-
