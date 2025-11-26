@@ -1,182 +1,288 @@
-#!/usr/bin/python
-import sys
+#!/usr/bin/env python3
+"""Convert IPinyou dataset to LibSVM format with feature indexing."""
+
+from __future__ import annotations
+
+import argparse
 import operator
+from pathlib import Path
+from typing import TextIO
 
-if len(sys.argv) < 5:
-    print 'Usage: train.log.txt test.log.txt train.lr.txt test.lr.txt featindex.txt'
-    exit(-1)
+OSES = ["windows", "ios", "mac", "android", "linux"]
+BROWSERS = ["chrome", "sogou", "maxthon", "safari", "firefox", "theworld", "opera", "ie"]
 
-oses = ["windows", "ios", "mac", "android", "linux"]
-browsers = ["chrome", "sogou", "maxthon", "safari", "firefox", "theworld", "opera", "ie"]
+F1S = [
+    "weekday",
+    "hour",
+    "IP",
+    "region",
+    "city",
+    "adexchange",
+    "domain",
+    "slotid",
+    "slotwidth",
+    "slotheight",
+    "slotvisibility",
+    "slotformat",
+    "creative",
+    "advertiser",
+]
 
-f1s = ["weekday", "hour", "IP", "region", "city", "adexchange", "domain", "slotid", "slotwidth", "slotheight", "slotvisibility", "slotformat", "creative", "advertiser"]
+F1SP = ["useragent", "slotprice"]
 
-f1sp = ["useragent", "slotprice"]
 
-f2s = ["weekday,region"]
-
-def featTrans(name, content):
+def feat_trans(name: str, content: str) -> str:
+    """Transform feature content based on feature name."""
     content = content.lower()
     if name == "useragent":
         operation = "other"
-        for o in oses:
+        for o in OSES:
             if o in content:
                 operation = o
                 break
         browser = "other"
-        for b in browsers:
+        for b in BROWSERS:
             if b in content:
                 browser = b
                 break
         return operation + "_" + browser
     if name == "slotprice":
-        price = int(content)
-        if price > 100:
-            return "101+"
-        elif price > 50:
-            return "51-100"
-        elif price > 10:
-            return "11-50"
-        elif price > 0:
-            return "1-10"
-        else:
+        try:
+            price = int(content)
+            if price > 100:
+                return "101+"
+            elif price > 50:
+                return "51-100"
+            elif price > 10:
+                return "11-50"
+            elif price > 0:
+                return "1-10"
+            else:
+                return "0"
+        except ValueError:
             return "0"
+    return content
 
-def getTags(content):
-    if content == '\n' or len(content) == 0:
+
+def get_tags(content: str) -> list[str]:
+    """Extract tags from comma-separated content."""
+    if content == "\n" or len(content) == 0:
         return ["null"]
-    return content.strip().split(',')
+    return content.strip().split(",")
 
-# initialize
-namecol = {}
-featindex = {}
-maxindex = 0
-fi = open(sys.argv[1], 'r')
-first = True
+def build_feature_index(train_path: Path) -> tuple[dict[str, int], dict[str, int]]:
+    """Build feature index from training data."""
+    if not train_path.exists():
+        raise FileNotFoundError(f"Training file not found: {train_path}")
+    if not train_path.is_file():
+        raise ValueError(f"Training path is not a file: {train_path}")
 
-featindex['truncate'] = maxindex
-maxindex += 1
+    namecol: dict[str, int] = {}
+    featindex: dict[str, int] = {}
+    maxindex = 0
 
-for line in fi:
-    s = line.split('\t')
-    if first:
-        first = False
-        for i in range(0, len(s)):
-            namecol[s[i].strip()] = i
-            if i > 0:
-                featindex[str(i) + ':other'] = maxindex
-                maxindex += 1
-        continue
-    for f in f1s:
-        col = namecol[f]
-        content = s[col]
-        feat = str(col) + ':' + content
-        if feat not in featindex:
-            featindex[feat] = maxindex
-            maxindex += 1
-    for f in f1sp:
-        col = namecol[f]
-        content = featTrans(f, s[col])
-        feat = str(col) + ':' + content
-        if feat not in featindex:
-            featindex[feat] = maxindex
-            maxindex += 1
-    col = namecol["usertag"]
-    tags = getTags(s[col])
-    for tag in tags:
-        feat = str(col) + ':' + tag
-        if feat not in featindex:
-            featindex[feat] = maxindex
-            maxindex += 1
+    featindex["truncate"] = maxindex
+    maxindex += 1
 
-print 'feature size: ' + str(maxindex)
-featvalue = sorted(featindex.iteritems(), key=operator.itemgetter(1))
-fo = open(sys.argv[5], 'w')
-for fv in featvalue:
-    fo.write(fv[0] + '\t' + str(fv[1]) + '\n')
-fo.close()
+    try:
+        with train_path.open("r", encoding="utf-8") as fi:
+            first = True
+            for line_num, line in enumerate(fi, start=1):
+                s = line.rstrip("\n").split("\t")
+                if first:
+                    first = False
+                    if not s or not any(col.strip() for col in s):
+                        raise ValueError(
+                            f"Training file has empty or invalid header: {train_path}"
+                        )
+                    for i in range(len(s)):
+                        namecol[s[i].strip()] = i
+                        if i > 0:
+                            featindex[str(i) + ":other"] = maxindex
+                            maxindex += 1
+                    continue
 
-# indexing train
-print 'indexing ' + sys.argv[1]
-fi = open(sys.argv[1], 'r')
-fo = open(sys.argv[3], 'w')
+                for f in F1S:
+                    if f not in namecol:
+                        continue
+                    col = namecol[f]
+                    if col >= len(s):
+                        continue
+                    content = s[col]
+                    feat = str(col) + ":" + content
+                    if feat not in featindex:
+                        featindex[feat] = maxindex
+                        maxindex += 1
 
-first = True
-for line in fi:
-    if first:
-        first = False
-        continue
-    s = line.split('\t')
-    fo.write(s[0] + ' ' + s[23]) # click + winning price
-    index = featindex['truncate']
-    fo.write(' ' + str(index) + ":1")
-    for f in f1s: # every direct first order feature
-        col = namecol[f]
-        content = s[col]
-        feat = str(col) + ':' + content
-        if feat not in featindex:
-            feat = str(col) + ':other'
-        index = featindex[feat]
-        fo.write(' ' + str(index) + ":1")
-    for f in f1sp:
-        col = namecol[f]
-        content = featTrans(f, s[col])
-        feat = str(col) + ':' + content
-        if feat not in featindex:
-            feat = str(col) + ':other'
-        index = featindex[feat]
-        fo.write(' ' + str(index) + ":1")
-    col = namecol["usertag"]
-    tags = getTags(s[col])
-    for tag in tags:
-        feat = str(col) + ':' + tag
-        if feat not in featindex:
-            feat = str(col) + ':other'
-        index = featindex[feat]
-        fo.write(' ' + str(index) + ":1")
-    fo.write('\n')
-fo.close()
+                for f in F1SP:
+                    if f not in namecol:
+                        continue
+                    col = namecol[f]
+                    if col >= len(s):
+                        continue
+                    content = feat_trans(f, s[col])
+                    feat = str(col) + ":" + content
+                    if feat not in featindex:
+                        featindex[feat] = maxindex
+                        maxindex += 1
 
-# indexing test
-print 'indexing ' + sys.argv[2]
-fi = open(sys.argv[2], 'r')
-fo = open(sys.argv[4], 'w')
+                if "usertag" in namecol:
+                    col = namecol["usertag"]
+                    if col < len(s):
+                        tags = get_tags(s[col])
+                        for tag in tags:
+                            feat = str(col) + ":" + tag
+                            if feat not in featindex:
+                                featindex[feat] = maxindex
+                                maxindex += 1
 
-first = True
-for line in fi:
-    if first:
-        first = False
-        continue
-    s = line.split('\t')
-    fo.write(s[0] + ' ' + s[23]) # click + winning price
-    index = featindex['truncate']
-    fo.write(' ' + str(index) + ":1")
-    for f in f1s: # every direct first order feature
-        col = namecol[f]
-        if col >= len(s):
-            print 'col: ' + str(col)
-            print line
-        content = s[col]
-        feat = str(col) + ':' + content
-        if feat not in featindex:
-            feat = str(col) + ':other'
-        index = featindex[feat]
-        fo.write(' ' + str(index) + ":1")
-    for f in f1sp:
-        col = namecol[f]
-        content = featTrans(f, s[col])
-        feat = str(col) + ':' + content
-        if feat not in featindex:
-            feat = str(col) + ':other'
-        index = featindex[feat]
-        fo.write(' ' + str(index) + ":1")
-    col = namecol["usertag"]
-    tags = getTags(s[col])
-    for tag in tags:
-        feat = str(col) + ':' + tag
-        if feat not in featindex:
-            feat = str(col) + ':other'
-        index = featindex[feat]
-        fo.write(' ' + str(index) + ":1")
-    fo.write('\n')
-fo.close()
+        if not namecol:
+            raise ValueError(f"No valid header found in training file: {train_path}")
+
+        return namecol, featindex
+    except OSError as e:
+        raise RuntimeError(f"Failed to read training file {train_path}: {e}") from e
+
+
+def write_feature_index(featindex: dict[str, int], output_path: Path) -> None:
+    """Write feature index to file."""
+    if not featindex:
+        raise ValueError("Feature index is empty, cannot write to file")
+
+    try:
+        featvalue = sorted(featindex.items(), key=operator.itemgetter(1))
+        with output_path.open("w", encoding="utf-8") as fo:
+            for fv in featvalue:
+                fo.write(f"{fv[0]}\t{fv[1]}\n")
+    except OSError as e:
+        raise RuntimeError(f"Failed to write feature index to {output_path}: {e}") from e
+
+
+def index_file(
+    input_path: Path,
+    output_path: Path,
+    namecol: dict[str, int],
+    featindex: dict[str, int],
+) -> None:
+    """Convert input file to LibSVM format."""
+    if not input_path.exists():
+        raise FileNotFoundError(f"Input file not found: {input_path}")
+    if not input_path.is_file():
+        raise ValueError(f"Input path is not a file: {input_path}")
+
+    if "truncate" not in featindex:
+        raise ValueError("Feature index missing required 'truncate' feature")
+
+    try:
+        with input_path.open("r", encoding="utf-8") as fi, output_path.open(
+            "w", encoding="utf-8"
+        ) as fo:
+            first = True
+            for line_num, line in enumerate(fi, start=1):
+                if first:
+                    first = False
+                    continue
+
+                s = line.rstrip("\n").split("\t")
+                if len(s) < 24:
+                    continue
+
+                click = s[0]
+                winning_price = s[23] if len(s) > 23 else "0"
+                fo.write(f"{click} {winning_price}")
+
+                # Add truncate feature
+                index = featindex["truncate"]
+                fo.write(f" {index}:1")
+
+                # Process F1S features
+                for f in F1S:
+                    if f not in namecol:
+                        continue
+                    col = namecol[f]
+                    if col >= len(s):
+                        continue
+                    content = s[col]
+                    feat = str(col) + ":" + content
+                    if feat not in featindex:
+                        feat = str(col) + ":other"
+                    if feat in featindex:
+                        index = featindex[feat]
+                        fo.write(f" {index}:1")
+
+                # Process F1SP features
+                for f in F1SP:
+                    if f not in namecol:
+                        continue
+                    col = namecol[f]
+                    if col >= len(s):
+                        continue
+                    content = feat_trans(f, s[col])
+                    feat = str(col) + ":" + content
+                    if feat not in featindex:
+                        feat = str(col) + ":other"
+                    if feat in featindex:
+                        index = featindex[feat]
+                        fo.write(f" {index}:1")
+
+                # Process usertag
+                if "usertag" in namecol:
+                    col = namecol["usertag"]
+                    if col < len(s):
+                        tags = get_tags(s[col])
+                        for tag in tags:
+                            feat = str(col) + ":" + tag
+                            if feat not in featindex:
+                                feat = str(col) + ":other"
+                            if feat in featindex:
+                                index = featindex[feat]
+                                fo.write(f" {index}:1")
+
+                fo.write("\n")
+    except OSError as e:
+        raise RuntimeError(
+            f"Failed to process file {input_path} or write to {output_path}: {e}"
+        ) from e
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("train_log", type=Path, help="Training log file")
+    parser.add_argument("test_log", type=Path, help="Test log file")
+    parser.add_argument("train_lr", type=Path, help="Output training LibSVM file")
+    parser.add_argument("test_lr", type=Path, help="Output test LibSVM file")
+    parser.add_argument("featindex", type=Path, help="Output feature index file")
+    return parser.parse_args()
+
+
+def main() -> None:
+    import sys
+
+    try:
+        args = parse_args()
+
+        # Build feature index
+        print("Building feature index...")
+        namecol, featindex = build_feature_index(args.train_log)
+        print(f"Feature size: {len(featindex)}")
+
+        # Write feature index
+        write_feature_index(featindex, args.featindex)
+
+        # Index training file
+        print(f"Indexing {args.train_log}")
+        index_file(args.train_log, args.train_lr, namecol, featindex)
+
+        # Index test file
+        print(f"Indexing {args.test_log}")
+        index_file(args.test_log, args.test_lr, namecol, featindex)
+    except (FileNotFoundError, ValueError, RuntimeError) as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+    except KeyboardInterrupt:
+        print("\nInterrupted by user", file=sys.stderr)
+        sys.exit(130)
+
+
+if __name__ == "__main__":
+    main()
