@@ -10,29 +10,56 @@
 #   universal: false
 
 -e file:.
+aiofiles==25.1.0
+    # via make-ipinyou-data
 certifi==2025.11.12
     # via requests
 charset-normalizer==3.4.4
     # via requests
-duckdb==1.4.2
+duckdb==1.4.3
     # via make-ipinyou-data
 idna==3.11
     # via requests
+iniconfig==2.3.0
+    # via pytest
 kagglehub==0.3.13
     # via make-ipinyou-data
 loguru==0.7.3
     # via make-ipinyou-data
+markdown-it-py==4.0.0
+    # via rich
+mdurl==0.1.2
+    # via markdown-it-py
+numpy==2.3.5
+    # via make-ipinyou-data
 packaging==25.0
     # via kagglehub
+    # via pytest
+pendulum==3.1.0
+    # via make-ipinyou-data
+pluggy==1.6.0
+    # via pytest
+pygments==2.19.2
+    # via pytest
+    # via rich
+pytest==9.0.2
+python-dateutil==2.9.0.post0
+    # via pendulum
 python-dotenv==1.2.1
     # via make-ipinyou-data
 pyyaml==6.0.3
     # via kagglehub
 requests==2.32.5
     # via kagglehub
+rich==14.2.0
+    # via make-ipinyou-data
+six==1.17.0
+    # via python-dateutil
 tqdm==4.67.1
     # via kagglehub
     # via make-ipinyou-data
+tzdata==2025.3
+    # via pendulum
 ua-parser==1.0.1
     # via make-ipinyou-data
 ua-parser-builtins==0.18.0.post1
